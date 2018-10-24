@@ -1,9 +1,13 @@
-#include <iostream>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <sys/ptrace.h>
 #include <sys/reg.h>
 #include <string.h>
+
+#include <iostream>
+#include <unordered_map>
+
+extern std::unordered_map<unsigned, std::string> syscall_names;
 
 int main(int argc, char** argv)
 {
@@ -24,20 +28,26 @@ int main(int argc, char** argv)
   }
   else
   {
-    pid_t wait_outcome = wait(NULL);
-    std::cerr << wait_outcome << " " << errno << std::endl;
-    long instructions_number = ptrace(PTRACE_PEEKUSER, child, 8 * ORIG_RAX, NULL);
-    if (instructions_number == -1)
+    int exit_status;
+    while (true)
     {
-      std::cerr << "error: " << std::string(strerror(errno)) << std::endl;
+      wait(&exit_status);
+      if (WIFEXITED(exit_status))
+      {
+        std::cerr << "child exited: " << exit_status << std::endl;
+        break;
+      }
+      long instructions_number = ptrace(PTRACE_PEEKUSER, child, 8 * ORIG_RAX, NULL);
+      if (instructions_number == -1)
+      {
+        std::cerr << "error: " << std::string(strerror(errno)) << std::endl;
+        break;
+      }
+      std::cerr << "child syscall: " << instructions_number
+                << " (" << syscall_names.at(instructions_number)
+                << ")" << std::endl;
+      ptrace(PTRACE_SYSCALL, child, NULL, NULL);
     }
-    std::cerr << "child syscall: " << instructions_number << std::endl;
-    ptrace(PTRACE_CONT, child, NULL, NULL);
-
-    wait_outcome = wait(NULL);
-    std::cerr << wait_outcome << " " << errno << std::endl;
-    wait_outcome = wait(NULL);
-    std::cerr << wait_outcome << " " << errno << std::endl;
   }
   return 0;
 }
