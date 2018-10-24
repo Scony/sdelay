@@ -6,6 +6,8 @@
 
 #include <iostream>
 #include <unordered_map>
+#include <chrono>
+#include <thread>
 
 extern std::unordered_map<unsigned, std::string> syscall_names;
 
@@ -37,15 +39,20 @@ int main(int argc, char** argv)
         std::cerr << "child exited: " << exit_status << std::endl;
         break;
       }
-      long instructions_number = ptrace(PTRACE_PEEKUSER, child, 8 * ORIG_RAX, NULL);
-      if (instructions_number == -1)
+      long syscall = ptrace(PTRACE_PEEKUSER, child, 8 * ORIG_RAX, NULL);
+      if (syscall == -1)
       {
         std::cerr << "error: " << std::string(strerror(errno)) << std::endl;
         break;
       }
-      std::cerr << "child syscall: " << instructions_number
-                << " (" << syscall_names.at(instructions_number)
-                << ")" << std::endl;
+      auto syscall_name = syscall_names.at(syscall);
+      if (syscall_name == "sendto" or syscall_name == "sendmsg" or syscall_name == "sendmmsg")
+      {
+        auto latency = std::chrono::milliseconds{5000};
+        std::cerr << "adding latency (" << latency.count() << " ms) to child syscall: "
+                  << syscall << " (" << syscall_name << ")" << std::endl;
+        std::this_thread::sleep_for(std::chrono::milliseconds{5000});
+      }
       ptrace(PTRACE_SYSCALL, child, NULL, NULL);
     }
   }
